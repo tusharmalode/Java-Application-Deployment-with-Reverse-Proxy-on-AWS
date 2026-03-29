@@ -54,7 +54,7 @@ This project demonstrates secure deployment of a Java-based Student Registration
 
 ## 1. Create VPC
 
-```bash
+```
 VPC CIDR: 10.0.0.0/16
 ```
 
@@ -64,7 +64,7 @@ VPC CIDR: 10.0.0.0/16
 
 ### 🔹 Public Subnet
 
-```bash
+```
 CIDR: 10.0.0.0/20
 ```
 
@@ -73,7 +73,7 @@ CIDR: 10.0.0.0/20
 
 ### 🔹 Private Subnet
 
-```bash
+```
 CIDR: 10.0.16.0/20
 ```
 
@@ -93,7 +93,7 @@ CIDR: 10.0.16.0/20
 
 ### Public Route Table
 
-```bash
+```
 Destination: 0.0.0.0/0 → Internet Gateway
 ```
 
@@ -103,7 +103,7 @@ Associate with Public Subnet
 
 ### Private Route Table
 
-```bash
+```
 No direct internet route
 Internet access through NAT gateway
 ```
@@ -209,7 +209,7 @@ Associate with Private Subnet
 
 # 🗄️ Database Setup (RDS)
 
-* Go to RDS ---> Create Database
+* Goto RDS and Create Database
   1. Choose - `custom vpc`
   2. Security Group - `3306`
   3. User - `admin`
