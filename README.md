@@ -41,9 +41,10 @@ This project demonstrates secure deployment of a Java-based Student Registration
 ## 🛠️ Technologies Used
 
 * AWS EC2
-* AWS RDS (MySQL)
-* Apache Tomcat
 * Nginx
+* Java
+* Apache Tomcat
+* Amazone RDS
 * MySQL Connector/J
 * Amazon VPC
 
@@ -64,7 +65,7 @@ VPC CIDR: 10.0.0.0/16
 ### 🔹 Public Subnet
 
 ```bash
-CIDR: 10.0.1.0/24
+CIDR: 10.0.0.0/20
 ```
 
 * Used for Reverse Proxy EC2
@@ -73,12 +74,12 @@ CIDR: 10.0.1.0/24
 ### 🔹 Private Subnet
 
 ```bash
-CIDR: 10.0.2.0/24
+CIDR: 10.0.16.0/20
 ```
 
 * Used for Backend EC2 & RDS
 * No direct internet access
-
+* Use **NAT** Gateway
 ---
 
 ## 3. Internet Gateway (IGW)
@@ -104,6 +105,7 @@ Associate with Public Subnet
 
 ```bash
 No direct internet route
+Internet access through NAT gateway
 ```
 
 Associate with Private Subnet
@@ -138,110 +140,151 @@ Associate with Private Subnet
 
 ---
 
-# 🖥️ EC2 Setup
+# 🖥️ EC2 Setup & Application Deployment
+
+## Proxy Server (Public Subnet)
+
+* Install Nginx
+  
+  ```bash
+  sudo yum update
+  sudo yum install nginx -y
+  sudo systemctl start nginx
+  sudo systemctl enable nginx
+  ```
+  
+* Make configuration
+  
+  ```bash
+  cd /etc/nginx/
+  sudo vim nginx.conf
+  ```
+* Add proxy to location block
+> location / {
+> proxy_pass http://<Backend_private_IP>:8080/student/;
+>}
+---
 
 ## Backend Server (Private Subnet)
 
 * Install Java & Apache Tomcat
-* Deploy `student.war`
+  
+  ```bash
+  sudo yum update
+  sudo yum install java -y
+  sudo curl -O https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.116/bin/apache-tomcat-9.0.116.tar.gz
+  ```
+* Extract the apache-tomcat.tar.gz file in **/opt** directory
+  
+  ```bash
+  sudo tar -xvzf apache-tomcat-9.0.116.tar.gz -C /opt
+  cd /opt
+  ```
+* Rename the unzip file
+  
+  ```bash
+  sudo mv apache-tomcat-9.0.116.tar.gz apache
+  ```
+* Deploy **student.war** file
+  
+  ```bash
+  sudo -i
+  cd /opt/apache/webapps/
+  curl -o https://s3-us-west-2.amazonaws.com/studentapi-cit/student.war
+  ```
+* Restart Tomcat
+  
+  ```bash
+  cd /opt/apache/bin/
+  ./catalina.sh stop
+  ./catalina.sh start
+  ```
+* Now to check Tomcat work or not Hit the proxy-public-IP  
 * Runs on port 8080
 
 ---
 
-## Reverse Proxy Server (Public Subnet)
-
-* Install Nginx
-* Forward traffic to backend private IP
-
----
-
-# ☕ Application Deployment
-
-### Install Java
-
-```bash
-sudo yum install java-11-amazon-corretto -y
-```
-
-### Install Tomcat
-
-```bash
-wget https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.85/bin/apache-tomcat-9.0.85.tar.gz
-tar -xvzf apache-tomcat-9.0.85.tar.gz
-mv apache-tomcat-9.0.85 tomcat
-```
-
-### Start Tomcat
-
-```bash
-cd tomcat/bin
-chmod +x *.sh
-./startup.sh
-```
-
-### Deploy WAR
-
-```bash
-cp student.war ~/tomcat/webapps/
-```
 
 ---
 
 # 🗄️ Database Setup (RDS)
 
-### Create DB & Table
+* Go to RDS ---> Create Database
+  1. Choose - `custom vpc`
+  2. Security Group - `3306`
+  3. User - `admin`
+  4. Password - `<PASSWORD>`
+
+### Access RDS or Connect RDS
+
+* Install mariadb on app-server
+
+```bash
+sudo yum install mariadb105-server -y
+sudo systemctl start mariadb
+sudo systemctl enable mariadb
+```
+* Connect to RDS
+
+```bash
+sudo mysql -u admin -p -h <RDS_ENDPOINT>
+```
+
+* Inside Mysql create Database and Table
 
 ```sql
-CREATE DATABASE studentdb;
-USE studentdb;
+CREATE DATABASE studentapp;
+USE studentapp;
 
 CREATE TABLE students (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100),
-    email VARCHAR(100),
-    course VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    student_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_name VARCHAR(100),
+    student_addr VARCHAR(100),
+    student_age VARCHAR(3),
+    student_qual VARCHAR(20),
+    student_percent VARCHAR(10),
+    student_year_passed VARCHAR(10)
 );
 ```
 
 ---
 
-# 🔌 MySQL Connector
+# 🔌 Install MySQL Connector (On app-server)
 
 ```bash
-wget mysql-connector-java-8.0.xx.jar
-mv mysql-connector-java-8.0.xx.jar ~/tomcat/lib/
+cd /opt/apache/lib
+curl -O https://s3-us-west-2.amazonaws.com/studentapi-cit/mysql-connector.jar
 ```
 
-Restart Tomcat after adding.
+* For access Application Edit configuration file of Apache-Tomcat
 
+```bash
+cd /opt/apache/conf/
+vim context.xml
+```
+
+* Add this inside context block
+
+```bash
+<Resource name="jdbc/TestDB" auth="Container"
+          type="javax.sql.DataSource"
+          maxTotal="500" maxIdle="30" maxWaitMillis="1000"
+          username="<USER>" password="<YOUR_PASSWORD>"
+          driverClassName="com.mysql.jdbc.Driver"
+          url="jdbc:mysql://<RDS-ENDPOINT>:3306/studentapp?useUnicode=yes&amp;characterEncoding=utf8"/>
+```
+
+* Restart the Apache-tomcat
+
+```bash
+cd /opt/apache/bin
+./catalina.sh stop
+./catalina.sh start
+ ```
+ 
 ---
 
-# 🔁 Reverse Proxy Configuration
 
-### Install Nginx
-
-```bash
-sudo yum install nginx -y
-```
-
-### Configure
-
-```bash
-sudo vi /etc/nginx/nginx.conf
-```
-
-```nginx
-location /student/ {
-    proxy_pass http://<BACKEND_PRIVATE_IP>:8080/student/;
-}
-```
-
-### Restart
-
-```bash
-sudo systemctl restart nginx
-```
 
 ---
 
@@ -257,10 +300,17 @@ sudo systemctl restart nginx
 # 🌐 Access Application
 
 ```
-http://<Proxy-Public-IP>/student
+http://<Proxy-Public-IP>
 ```
 
 ---
+
+
+### 2. Database Verification
+
+```sql
+SELECT * FROM students;
+```
 
 # 🔄 Traffic Flow
 
@@ -270,22 +320,6 @@ http://<Proxy-Public-IP>/student
 4. Response → Proxy → User
 
 ---
-
-# 📸 Deliverables
-
-### 1. Application URL
-
-```
-http://<Proxy-Public-IP>/student
-```
-
----
-
-### 2. Database Verification
-
-```sql
-SELECT * FROM students;
-```
 
 ---
 
@@ -315,7 +349,3 @@ SELECT * FROM students;
 This project demonstrates how to securely deploy a Java web application using AWS VPC, ensuring backend isolation and controlled access through a reverse proxy.
 
 ---
-
-## 👨‍💻 Author
-
-**Your Name**
